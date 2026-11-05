@@ -24,7 +24,8 @@ def episode_identity(url):
  try:
   p=urlsplit(url or '');host=(p.hostname or '').lower().removeprefix('www.');path=unquote(p.path).rstrip('/')
   if p.scheme not in ('http','https') or not host or not path:return None
-  episode=parse_qs(p.query).get('i',[''])[0] if host=='podcasts.apple.com' else ''
+  # Preserve non-Apple query strings: they can identify different episodes.
+  episode=parse_qs(p.query).get('i',[''])[0] if host=='podcasts.apple.com' else p.query
   return host,path,episode
  except ValueError:return None
 

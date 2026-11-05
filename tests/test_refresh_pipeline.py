@@ -56,6 +56,12 @@ class RefreshGateTest(unittest.TestCase):
         self.assertEqual(new['episodes']['show'][1]['artwork'], 'https://example.com/new.jpg')
         self.assertNotIn('artwork', new['episodes']['show'][2])
 
+    def test_different_episode_queries_do_not_share_artwork(self):
+        old = {'episodes': {'show': [{'url': 'https://example.com/player?episode=10', 'artwork': 'https://example.com/ten.jpg'}]}}
+        new = {'episodes': {'show': [{'url': 'https://example.com/player?episode=11'}]}}
+        self.assertEqual(refresh.preserve_episode_artwork(old, new), 0)
+        self.assertNotIn('artwork', new['episodes']['show'][0])
+
     def test_episode_association_and_mismatched_audit_rejected(self):
         with self.assertRaises(ValueError):
             self.check(details={'episodes': {}})
