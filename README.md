@@ -1,6 +1,6 @@
 # Hacker Podcast
 
-A static collection of podcast shows linked from HN comments. UI version 3.1.0.
+A static collection of podcast shows linked from HN comments. UI version 3.1.1.
 
 ## Run locally
 
