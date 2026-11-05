@@ -22,8 +22,9 @@ branch. A concurrent source update causes the push to fail rather than overwrite
 it. Cloudflare Pages Git integration is expected to deploy the new commit.
 Set the GitHub Actions repository variable `PUBLIC_SITE_URL` to the public HTTPS
 site origin (for example the assigned `pages.dev` address). The workflow reads
-its public `data.json` until it equals the validated snapshot; without the
-variable or if publication remains stale, the workflow fails visibly.
+its public `data.json` until it equals the validated snapshot. If the variable
+is missing, the workflow stops before collecting or committing; if publication
+remains stale, the workflow fails visibly.
 Optionally create a Cloudflare Pages deploy hook for the production branch and
 store its URL in the GitHub Actions secret `CLOUDFLARE_DEPLOY_HOOK`. If the
 public snapshot stays stale, the workflow calls this hook once and checks again.

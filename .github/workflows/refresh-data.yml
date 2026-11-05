@@ -25,6 +25,21 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
+      - name: Check public site configuration
+        env:
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'scripts')
+          from verify_publication import data_url
+          site = os.environ.get('PUBLIC_SITE_URL', '').strip()
+          if not site:
+              raise SystemExit('PUBLIC_SITE_URL is not configured; refresh is disabled until publishing can be checked')
+          data_url(site)
+          print('Public site origin configured.')
+          PY
+
       - name: Check whether today's refresh already succeeded
         id: freshness
         env:
