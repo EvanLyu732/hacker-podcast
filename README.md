@@ -2,6 +2,18 @@
 
 A static collection of podcast shows linked from HN comments. UI version 3.0.6.
 
+## Run locally
+
+From the project root, run `python3 -m http.server 8000 --directory dist` and
+open `http://localhost:8000/`. The existing snapshot is included; starting the
+web server does not collect new data. Python 3.10+ and Node.js 18+ are required
+for the refresh pipeline and its tests.
+
+`dist/` contains the static site and published JSON data, `scripts/` the
+collection and enrichment pipeline, `data/` cached source data, `snapshots/`
+archived snapshots, and `tests/` the validation suite. See [MIGRATION.md](MIGRATION.md)
+for the proposed hosting and unattended-update setup.
+
 ## Refresh
 
 Run `python3 scripts/refresh_pipeline.py` from the repository root. It runs the
