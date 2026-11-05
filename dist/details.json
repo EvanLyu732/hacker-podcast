@@ -22581,20 +22581,13 @@
         "url": "https://podcasts.apple.com/us/podcast/gene-seroka-on-the-logistical-logjam-at-the-port-of-la/id1056200096?i=1000530726693",
         "source_id": "29788909",
         "source_ids": [
-          "29788909",
-          "34379796"
+          "29788909"
         ],
         "evidence": {
           "29788909": [
             {
               "method": "link",
               "url": "https://podcasts.apple.com/us/podcast/gene-seroka-on-the-logistical-logjam-at-the-port-of-la/id1056200096?i=1000530726693"
-            }
-          ],
-          "34379796": [
-            {
-              "method": "rss_title",
-              "title": "The Trucking Episode: Why the Industry Is Such a Mess"
             }
           ]
         }

@@ -27,6 +27,16 @@ def key(s):
   p=urllib.parse.urlsplit(html.unescape(s or ''));host=(p.hostname or '').lower().removeprefix('www.');path=urllib.parse.unquote(p.path).rstrip('/');episode=urllib.parse.parse_qs(p.query).get('i',[''])[0] if host=='podcasts.apple.com' else ''
   return (host,path,episode)
  except ValueError:return ('','','')
+def episode_url_key(value):
+ # Keep query parameters that can distinguish episodes on the same endpoint.
+ # Apple uses the i parameter as its episode identifier; the other parameters
+ # on those URLs are tracking parameters.
+ try:
+  p=urllib.parse.urlsplit(html.unescape(value or ''));host=(p.hostname or '').lower().removeprefix('www.')
+  path=urllib.parse.unquote(p.path).rstrip('/')
+  query=urllib.parse.parse_qs(p.query).get('i',[''])[0] if host=='podcasts.apple.com' else p.query
+  return (host,path,query)
+ except ValueError:return ('','','')
 def guid_key(value):
  # RSS GUIDs are opaque identities: their query parameters must never be discarded.
  value=html.unescape(value or '').strip()
@@ -63,13 +73,31 @@ def parse_rss(url):
    art=image_url(art,final)
    if art and channel_art and image_key(art)==image_key(channel_art):art=None
    entries.append({'title':title,'url':u,'guid':guid,'artwork':art})
+  # A link reused by different items is a show page, not a unique episode URL.
+  link_identities=defaultdict(set)
+  for entry in entries:
+   if entry['url']:
+    identity=('guid',guid_key(entry['guid'])) if entry['guid'] else ('title',words(entry['title']))
+    link_identities[episode_url_key(entry['url'])].add(identity)
+  for entry in entries:
+   if entry['url'] and len(link_identities[episode_url_key(entry['url'])])>1:entry['url']=''
   return entries,showlinks
  except Exception:return [],[]
+def register_alias(aliases,conflicts,url,identity):
+ """Never resolve the same URL to two distinct episode identities."""
+ if not url:return
+ alias_key=episode_url_key(url)
+ if alias_key==('','','') or alias_key in conflicts:return
+ previous=aliases.get(alias_key)
+ if previous is not None and previous!=identity:
+  aliases.pop(alias_key,None);conflicts.add(alias_key)
+ else:aliases[alias_key]=identity
+
 def final_key(url):
  try:
-  if urllib.parse.urlsplit(url).hostname not in ('www.econtalk.org','99percentinvisible.org','darknetdiaries.com','acquired.fm','radiolab.org','thisamericanlife.org'):return key(url)
-  _,final=fetch(url,2_500_000);result=key(final);return result if result[1] else key(url)
- except Exception:return key(url)
+  if urllib.parse.urlsplit(url).hostname not in ('www.econtalk.org','99percentinvisible.org','darknetdiaries.com','acquired.fm','radiolab.org','thisamericanlife.org'):return episode_url_key(url)
+  _,final=fetch(url,2_500_000);result=episode_url_key(final);return result if result[1] else episode_url_key(url)
+ except Exception:return episode_url_key(url)
 class ShowMeta(HTMLParser):
  def __init__(self):super().__init__();self.title=''
  def handle_starttag(self,tag,attrs):
@@ -82,11 +110,11 @@ def oembed(url):
  except Exception:return url,''
 # These two official Radiolab pages have the same episode title and description;
 # the later page is a re-release. Keep source links in per-comment evidence.
-VERIFIED_ALIASES={key('https://radiolab.org/podcast/americanish-2306'):key('https://radiolab.org/podcast/americanish')}
+VERIFIED_ALIASES={episode_url_key('https://radiolab.org/podcast/americanish-2306'):episode_url_key('https://radiolab.org/podcast/americanish')}
 def merge_verified_aliases(items):
  out=[];index={}
  for e in items:
-  identity=VERIFIED_ALIASES.get(key(e['url']),key(e['url']))
+  identity=VERIFIED_ALIASES.get(episode_url_key(e['url']),episode_url_key(e['url']))
   if identity not in index:
    index[identity]=e;out.append(e);continue
   target=index[identity];target['source_ids']=sorted(set(target['source_ids'])|set(e['source_ids']));target['source_id']=target['source_ids'][0]
@@ -137,7 +165,7 @@ def main():
  # Match an RSS title only when unique within that show, sufficiently distinctive, and literally present in a source comment.
  removed=added=merged=0
  for show in shows:
-  sid=show['id'];old=detail['episodes'].get(sid,[]);rows,_=rss.get(sid,([],[]));tally=Counter(words(x['title']) for x in rows);rss_unique={words(x['title']):x for x in rows if tally[words(x['title'])]==1};merged_by={};alias={}
+  sid=show['id'];old=detail['episodes'].get(sid,[]);rows,_=rss.get(sid,([],[]));tally=Counter(words(x['title']) for x in rows);rss_unique={words(x['title']):x for x in rows if tally[words(x['title'])]==1};merged_by={};alias={};alias_conflicts=set()
   def put(e,identity):
    nonlocal merged
    ids=set(map(str,e.get('source_ids',[e.get('source_id')])));ids.discard('None')
@@ -153,13 +181,13 @@ def main():
     e=dict(e);e['source_ids']=sorted(ids);e['source_id']=e['source_ids'][0] if e['source_ids'] else '';e['evidence']=evidence;merged_by[identity]=e
   for e in old:
    if not good_title(e['title']):removed+=1;continue
-   normalized=words(title_clean(e['title']));match=rss_unique.get(normalized);fk=final.get((sid,e['url']),key(e['url']))
+   normalized=words(title_clean(e['title']));match=rss_unique.get(normalized);fk=final.get((sid,e['url']),episode_url_key(e['url']))
    identity=('url',fk)
    # An exact, unique RSS title maps aliases to the RSS GUID/link. Do not merge ambiguous titles.
-   if match:identity=('rss',guid_key(match['guid']) if match['guid'] else key(match['url']) if match['url'] else fk)
-   alias[key(e['url'])]=identity
+   if match:identity=('rss',guid_key(match['guid']) if match['guid'] else episode_url_key(match['url']) if match['url'] else fk)
+   register_alias(alias,alias_conflicts,e['url'],identity)
    if match:
-    if match['url']:alias[key(match['url'])]=identity
+    if match['url']:register_alias(alias,alias_conflicts,match['url'],identity)
     if match.get('artwork'):e=dict(e,artwork=match['artwork'],artwork_source='rss')
    put(e,identity)
   normalized_comments=[(str(source['id']), ' '+words(re.sub('<[^>]*>',' ',comments.get(str(source['id']),source.get('text',''))))+' ') for source in show['sources']]
@@ -168,7 +196,16 @@ def main():
    if not item['url'] or tally[name]!=1 or len(name)<20 or len(tokens)<4 or len(set(tokens))<3:continue
    hits=[cid for cid,text in normalized_comments if f' {name} ' in text]
    if not hits:continue
-   identity=alias.get(key(item['url'])) or ('rss',guid_key(item['guid']) if item['guid'] else key(item['url']))
+   mapped=alias.get(episode_url_key(item['url']))
+   if item['guid']:
+    # A GUID beats another RSS identity. Promote an exact old URL match to
+    # this GUID so existing comments remain attached to the same episode.
+    identity=('rss',guid_key(item['guid']))
+    if mapped and mapped[0]=='url' and mapped in merged_by:
+     put(merged_by.pop(mapped),identity)
+     for alias_key,old_identity in list(alias.items()):
+      if old_identity==mapped:alias[alias_key]=identity
+   else:identity=mapped or ('rss',episode_url_key(item['url']))
    e={'title':item['title'],'url':item['url'],'source_id':hits[0],'source_ids':hits,'evidence':{cid:[{'method':'rss_title','title':item['title']}] for cid in hits}}
    if item.get('artwork'):e.update(artwork=item['artwork'],artwork_source='rss')
    if identity not in merged_by:added+=1

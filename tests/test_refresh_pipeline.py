@@ -17,7 +17,7 @@ class RefreshGateTest(unittest.TestCase):
                     'items': [{'id': 'show', 'spotify_url': 'https://open.spotify.com/show/1', 'sources': [{'id': 'comment'}]}]}
         self.new = copy.deepcopy(self.old)
         self.new.update(updated_at='2026-11-05T07:00:30Z', source_cutoff_id=11)
-        self.details = {'episodes': {'show': [{'source_ids': ['comment']}]}}
+        self.details = {'episodes': {'show': [{'url': 'https://example.com/episode/one', 'source_ids': ['comment']}]}}
         self.audit = {'data_snapshot': self.new['updated_at']}
 
     def check(self, new=None, details=None, audit=None):
@@ -61,6 +61,34 @@ class RefreshGateTest(unittest.TestCase):
         new = {'episodes': {'show': [{'url': 'https://example.com/player?episode=11'}]}}
         self.assertEqual(refresh.preserve_episode_artwork(old, new), 0)
         self.assertNotIn('artwork', new['episodes']['show'][0])
+
+    def test_same_comment_cannot_move_to_another_episode(self):
+        moved = {'episodes': {'show': [{'url': 'https://example.com/episode/other', 'source_ids': ['comment']}]}}
+        with self.assertRaisesRegex(ValueError, 'episode-specific comment associations changed'):
+            self.check(details=moved)
+
+    def test_apple_episode_identity_ignores_country_and_slug_not_episode(self):
+        first = 'https://podcasts.apple.com/us/podcast/name/id123?i=456'
+        other_country = 'https://podcasts.apple.com/gb/podcast/other/id123?i=456'
+        different_episode = 'https://podcasts.apple.com/us/podcast/name/id123?i=457'
+        self.assertEqual(refresh.episode_identity(first), refresh.episode_identity(other_country))
+        self.assertNotEqual(refresh.episode_identity(first), refresh.episode_identity(different_episode))
+
+    def test_spotify_tracking_does_not_change_episode_identity(self):
+        first = 'https://open.spotify.com/episode/AbCd123?si=one'
+        same = 'https://open.spotify.com/episode/AbCd123?si=two'
+        other = 'https://open.spotify.com/episode/XyZ987?si=one'
+        self.assertEqual(refresh.episode_identity(first), refresh.episode_identity(same))
+        self.assertNotEqual(refresh.episode_identity(first), refresh.episode_identity(other))
+
+    def test_one_comment_linked_to_two_episodes_cannot_lose_one(self):
+        two = {'episodes': {'show': [
+            {'url': 'https://example.com/episode/one', 'source_ids': ['comment']},
+            {'url': 'https://example.com/episode/two', 'source_ids': ['comment']},
+        ]}}
+        one = {'episodes': {'show': [{'url': 'https://example.com/episode/one', 'source_ids': ['comment']}]}}
+        with self.assertRaisesRegex(ValueError, 'episode-specific comment associations changed'):
+            refresh.validate(self.old, self.new, two, one, self.audit, self.started, self.finished)
 
     def test_episode_association_and_mismatched_audit_rejected(self):
         with self.assertRaises(ValueError):

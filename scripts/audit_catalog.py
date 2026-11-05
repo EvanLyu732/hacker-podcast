@@ -28,7 +28,7 @@ def main():
     links,text=source(cid);prior=e.get('evidence',{}).get(cid,[]);verified=[]
     for item in prior:
      if item.get('method')=='link' and key(item.get('url','')) in links:verified.append(item)
-     if item.get('method')=='rss_title' and words(item.get('title','')) and ' '+words(item['title'])+' ' in text:verified.append(item)
+     if item.get('method')=='rss_title' and words(title_clean(item.get('title',''))) and words(title_clean(item['title']))==words(title_clean(e['title'])) and ' '+words(item['title'])+' ' in text:verified.append(item)
     if not verified:
      choices=[e['url']]+old.get((sid,cid,words(title_clean(e['title']))),[])
      found=next((u for u in choices if key(u) in links),None)

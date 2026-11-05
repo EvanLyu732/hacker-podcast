@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run a fail-closed, isolated refresh. Publishing is a separate Sites operation."""
-import datetime as dt, fcntl, json, os, shutil, subprocess, sys, tempfile, time
+import datetime as dt, fcntl, json, os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -26,8 +26,21 @@ def episode_identity(url):
   if p.scheme not in ('http','https') or not host or not path:return None
   # Preserve non-Apple query strings: they can identify different episodes.
   episode=parse_qs(p.query).get('i',[''])[0] if host=='podcasts.apple.com' else p.query
+  if host=='podcasts.apple.com':
+   match=re.search(r'/id(\d+)$',path,re.I)
+   if match and episode.isdigit():path='/id'+match.group(1)
+  if host=='open.spotify.com' and re.fullmatch(r'/episode/[A-Za-z0-9]+',path):episode=''
   return host,path,episode
  except ValueError:return None
+
+def episode_associations(details):
+ result=set()
+ for sid,rows in details['episodes'].items():
+  for episode in rows:
+   identity=episode_identity(episode.get('url'))
+   if not identity:raise ValueError('An episode has no valid identity')
+   for cid in episode['source_ids']:result.add((str(sid),str(cid),identity))
+ return result
 
 def preserve_episode_artwork(old_details,new_details):
  """Keep previously verified episode art when the same URL loses its artwork."""
@@ -55,6 +68,8 @@ def validate(old,new,old_details,new_details,audit,started,finished):
  if lost:raise ValueError(f'{len(lost)} existing show/comment references disappeared; manual review required')
  lost_episodes=episode_references(old_details)-episode_references(new_details)
  if lost_episodes:raise ValueError(f'{len(lost_episodes)} existing show/episode/comment references disappeared; manual review required')
+ lost_associations=episode_associations(old_details)-episode_associations(new_details)
+ if lost_associations:raise ValueError(f'{len(lost_associations)} existing episode-specific comment associations changed; manual review required')
  old_spotify={str(s['id']) for s in old['items'] if s.get('spotify_url')};new_spotify={str(s['id']) for s in new['items'] if s.get('spotify_url')}
  if not old_spotify<=new_spotify:raise ValueError(f'{len(old_spotify-new_spotify)} verified Spotify show links disappeared; manual review required')
  if audit.get('data_snapshot')!=new['updated_at']:raise ValueError('Episode audit and new snapshot do not match')
